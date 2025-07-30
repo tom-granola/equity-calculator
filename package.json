@@ -1,0 +1,9 @@
+{
+  "name": "equity-calculator",
+  "version": "1.0.0",
+  "description": "Equity options calculator for startup teams",
+  "main": "index.html",
+  "scripts": {
+    "start": "serve ."
+  }
+}
