@@ -19,14 +19,20 @@
         const DollarSign = ({ className }) => <span className={className}>💰</span>;
         const TrendingUp = ({ className }) => <span className={className}>📈</span>;
         const Info = ({ className }) => <span className={className}>ℹ️</span>;
+        const Settings = ({ className }) => <span className={className}>⚙️</span>;
 
         const EquityOptionsCalculator = () => {
+          const [activeTab, setActiveTab] = useState('simple');
           const [inputs, setInputs] = useState({
             optionValue: 75000,
             valuation: 250000000,
             sharePrice: 9.038,
             strikePrice: 2.51,
-            futureValuation: 500000000
+            futureValuation: 500000000,
+            // Advanced inputs
+            expectedRounds: 2,
+            dilutionPerRound: 20,
+            liquidationPreference: 1
           });
 
           const [results, setResults] = useState({
@@ -39,7 +45,12 @@
             futureValue: 0,
             futureGain: 0,
             futureRoi: 0,
-            ownershipPercentage: 0
+            ownershipPercentage: 0,
+            // Advanced results
+            dilutedOwnership: 0,
+            dilutedFutureValue: 0,
+            dilutedGain: 0,
+            totalDilution: 0
           });
 
           // Load URL parameters on mount
@@ -52,6 +63,7 @@
             if (urlParams.get('sharePrice')) newInputs.sharePrice = parseFloat(urlParams.get('sharePrice'));
             if (urlParams.get('strikePrice')) newInputs.strikePrice = parseFloat(urlParams.get('strikePrice'));
             if (urlParams.get('futureValuation')) newInputs.futureValuation = parseFloat(urlParams.get('futureValuation'));
+            if (urlParams.get('tab')) setActiveTab(urlParams.get('tab'));
             
             setInputs(newInputs);
           }, []);
@@ -59,10 +71,23 @@
           useEffect(() => {
             calculateResults();
             updateURL();
-          }, [inputs]);
+          }, [inputs, activeTab]);
+
+          const updateURL = () => {
+            const params = new URLSearchParams();
+            if (inputs.optionValue) params.set('optionValue', inputs.optionValue);
+            if (inputs.valuation) params.set('valuation', inputs.valuation);
+            if (inputs.sharePrice) params.set('sharePrice', inputs.sharePrice);
+            if (inputs.strikePrice) params.set('strikePrice', inputs.strikePrice);
+            if (inputs.futureValuation) params.set('futureValuation', inputs.futureValuation);
+            params.set('tab', activeTab);
+            
+            const newURL = window.location.pathname + '?' + params.toString();
+            window.history.replaceState({}, '', newURL);
+          };
 
           const calculateResults = () => {
-            const { optionValue, sharePrice, strikePrice, valuation, futureValuation } = inputs;
+            const { optionValue, sharePrice, strikePrice, valuation, futureValuation, expectedRounds, dilutionPerRound, liquidationPreference } = inputs;
             
             // Handle empty values - convert to numbers, defaulting to 0
             const optVal = parseFloat(optionValue) || 0;
@@ -83,7 +108,11 @@
                 futureValue: 0,
                 futureGain: 0,
                 futureRoi: 0,
-                ownershipPercentage: 0
+                ownershipPercentage: 0,
+                dilutedOwnership: 0,
+                dilutedFutureValue: 0,
+                dilutedGain: 0,
+                totalDilution: 0
               });
               return;
             }
@@ -104,12 +133,37 @@
             let futureGain = 0;
             let futureRoi = 0;
 
+            // Advanced dilution calculations
+            let dilutedOwnership = ownershipPercentage;
+            let dilutedFutureValue = 0;
+            let dilutedGain = 0;
+            let totalDilution = 0;
+
             if (futureVal > 0 && val > 0) {
-              // Calculate future share price based on valuation growth
+              // Simple calculation (no dilution)
               futureSharePrice = shareP * (futureVal / val);
               futureValue = numberOfShares * futureSharePrice;
               futureGain = futureValue - exerciseCost;
               futureRoi = exerciseCost > 0 ? ((futureGain / exerciseCost) * 100) : 0;
+
+              // Advanced calculation with dilution
+              if (activeTab === 'advanced') {
+                const rounds = parseFloat(expectedRounds) || 0;
+                const dilutionRate = parseFloat(dilutionPerRound) || 0;
+                
+                // Calculate compound dilution: (1 - dilutionRate/100)^rounds
+                const dilutionFactor = Math.pow(1 - (dilutionRate / 100), rounds);
+                dilutedOwnership = ownershipPercentage * dilutionFactor;
+                totalDilution = (1 - dilutionFactor) * 100;
+                
+                // Calculate diluted future value
+                const dilutedFutureShares = numberOfShares; // You still own the same number of shares
+                const dilutedTotalShares = totalShares / dilutionFactor; // Total shares increased due to new investors
+                const dilutedFutureSharePrice = futureVal / dilutedTotalShares;
+                
+                dilutedFutureValue = dilutedFutureShares * dilutedFutureSharePrice;
+                dilutedGain = dilutedFutureValue - exerciseCost;
+              }
             }
 
             setResults({
@@ -122,20 +176,12 @@
               futureValue: Math.round(futureValue),
               futureGain: Math.round(futureGain),
               futureRoi: futureRoi,
-              ownershipPercentage: ownershipPercentage
+              ownershipPercentage: ownershipPercentage,
+              dilutedOwnership: dilutedOwnership,
+              dilutedFutureValue: Math.round(dilutedFutureValue),
+              dilutedGain: Math.round(dilutedGain),
+              totalDilution: totalDilution
             });
-          };
-
-          const updateURL = () => {
-            const params = new URLSearchParams();
-            if (inputs.optionValue) params.set('optionValue', inputs.optionValue);
-            if (inputs.valuation) params.set('valuation', inputs.valuation);
-            if (inputs.sharePrice) params.set('sharePrice', inputs.sharePrice);
-            if (inputs.strikePrice) params.set('strikePrice', inputs.strikePrice);
-            if (inputs.futureValuation) params.set('futureValuation', inputs.futureValuation);
-            
-            const newURL = window.location.pathname + '?' + params.toString();
-            window.history.replaceState({}, '', newURL);
           };
 
           const handleInputChange = (field, value) => {
@@ -175,9 +221,433 @@
             return new Intl.NumberFormat('en-US').format(num);
           };
 
+          const renderSimpleCalculator = () => (
+            <div className="grid md:grid-cols-2 gap-8">
+              {/* Input Section */}
+              <div className="space-y-6">
+                <h2 className="text-xl font-semibold text-gray-800 flex items-center">
+                  <DollarSign className="w-5 h-5 mr-2" />
+                  Option Details
+                </h2>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Option Grant Value
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
+                      <input
+                        type="number"
+                        step="1000"
+                        value={inputs.optionValue}
+                        onChange={(e) => handleInputChange('optionValue', e.target.value)}
+                        className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        placeholder="75000"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Company Valuation
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
+                      <input
+                        type="number"
+                        step="1000"
+                        value={inputs.valuation}
+                        onChange={(e) => handleInputChange('valuation', e.target.value)}
+                        className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        placeholder="250000000"
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">Current company valuation (e.g., Series B)</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Preferred Share Price
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
+                      <input
+                        type="number"
+                        step="0.001"
+                        value={inputs.sharePrice}
+                        onChange={(e) => handleInputChange('sharePrice', e.target.value)}
+                        className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        placeholder="9.038"
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">Current fair market value per share</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Strike Price (Exercise Price)
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={inputs.strikePrice}
+                        onChange={(e) => handleInputChange('strikePrice', e.target.value)}
+                        className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        placeholder="2.51"
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">Price you pay to exercise options (after discounts)</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Future Company Valuation (Optional)
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
+                      <input
+                        type="number"
+                        step="1000"
+                        value={inputs.futureValuation}
+                        onChange={(e) => handleInputChange('futureValuation', e.target.value)}
+                        className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                        placeholder="500000000"
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">Projected future valuation for scenario analysis</p>
+                    
+                    {/* Preset buttons */}
+                    <div className="mt-4 space-y-3">
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => setPresetFutureValuation(1000000000)}
+                          className="px-3 py-2 text-sm bg-purple-100 text-purple-800 rounded-lg hover:bg-purple-200 transition-colors"
+                          type="button"
+                        >
+                          $1B
+                        </button>
+                        <button
+                          onClick={() => setPresetFutureValuation(2500000000)}
+                          className="px-3 py-2 text-sm bg-purple-100 text-purple-800 rounded-lg hover:bg-purple-200 transition-colors"
+                          type="button"
+                        >
+                          $2.5B
+                        </button>
+                        <button
+                          onClick={() => setPresetFutureValuation(10000000000)}
+                          className="px-3 py-2 text-sm bg-purple-100 text-purple-800 rounded-lg hover:bg-purple-200 transition-colors"
+                          type="button"
+                        >
+                          $10B
+                        </button>
+                        <button
+                          onClick={() => setPresetFutureValuation(100000000000)}
+                          className="px-3 py-2 text-sm bg-purple-100 text-purple-800 rounded-lg hover:bg-purple-200 transition-colors"
+                          type="button"
+                        >
+                          $100B
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => setPresetFutureValuation(1000000000000)}
+                        className="w-full px-4 py-3 text-lg font-bold bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 text-yellow-900 rounded-lg hover:from-yellow-500 hover:via-yellow-600 hover:to-yellow-700 transform hover:scale-105 transition-all duration-200 shadow-lg"
+                        type="button"
+                      >
+                        💰 ONE TRILLION DOLLARS 💰
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Results Section */}
+              <div className="space-y-6">
+                <h2 className="text-xl font-semibold text-gray-800 flex items-center">
+                  <TrendingUp className="w-5 h-5 mr-2" />
+                  Calculation Results
+                </h2>
+
+                <div className="space-y-4">
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <div className="text-sm text-gray-600 mb-1">Number of Shares</div>
+                    <div className="text-2xl font-bold text-gray-900">
+                      {formatNumber(results.numberOfShares)}
+                    </div>
+                  </div>
+
+                  <div className="bg-indigo-50 rounded-lg p-4">
+                    <div className="text-sm text-indigo-600 mb-1">Exercise Cost</div>
+                    <div className="text-2xl font-bold text-indigo-900">
+                      {formatCurrency(results.exerciseCost)}
+                    </div>
+                    <div className="text-sm text-indigo-600 mt-1">
+                      {results.exercisePercentage.toFixed(1)}% of grant value
+                    </div>
+                  </div>
+
+                  <div className="bg-green-50 rounded-lg p-4">
+                    <div className="text-sm text-green-600 mb-1">Potential Gain (Current Value)</div>
+                    <div className="text-2xl font-bold text-green-900">
+                      {formatCurrency(results.potentialGain)}
+                    </div>
+                    <div className="text-sm text-green-600 mt-1">
+                      {results.roi.toFixed(0)}% ROI if exercised today
+                    </div>
+                  </div>
+
+                  <div className="bg-orange-50 rounded-lg p-4">
+                    <div className="text-sm text-orange-600 mb-1">Company Ownership</div>
+                    <div className="text-2xl font-bold text-orange-900">
+                      {results.ownershipPercentage.toFixed(4)}%
+                    </div>
+                    <div className="text-sm text-orange-600 mt-1">
+                      Your percentage of the company
+                    </div>
+                  </div>
+
+                  {(inputs.futureValuation && parseFloat(inputs.futureValuation) > parseFloat(inputs.valuation || 0)) && (
+                    <div className="bg-purple-50 rounded-lg p-4 border-2 border-purple-200">
+                      <div className="text-sm text-purple-600 mb-1">Potential Gain - Possible Future Value</div>
+                      <div className="text-2xl font-bold text-purple-900">
+                        {formatCurrency(results.futureGain)}
+                      </div>
+                      <div className="text-sm text-purple-600 mt-1">
+                        {results.futureRoi.toFixed(0)}% ROI • {formatCurrency(results.futureSharePrice)}/share
+                      </div>
+                      <div className="text-xs text-purple-500 mt-2">
+                        Total value: {formatCurrency(results.futureValue)} at {formatValuation(parseFloat(inputs.futureValuation) || 0)} valuation
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+
+          const renderAdvancedCalculator = () => (
+            <div className="grid md:grid-cols-2 gap-8">
+              {/* Input Section */}
+              <div className="space-y-6">
+                <h2 className="text-xl font-semibold text-gray-800 flex items-center">
+                  <Settings className="w-5 h-5 mr-2" />
+                  Advanced Option Details
+                </h2>
+
+                <div className="space-y-4">
+                  {/* Basic inputs (same as simple) */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Option Grant Value
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
+                      <input
+                        type="number"
+                        step="1000"
+                        value={inputs.optionValue}
+                        onChange={(e) => handleInputChange('optionValue', e.target.value)}
+                        className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        placeholder="75000"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Current Company Valuation
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
+                      <input
+                        type="number"
+                        step="1000"
+                        value={inputs.valuation}
+                        onChange={(e) => handleInputChange('valuation', e.target.value)}
+                        className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        placeholder="250000000"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Current Share Price
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
+                      <input
+                        type="number"
+                        step="0.001"
+                        value={inputs.sharePrice}
+                        onChange={(e) => handleInputChange('sharePrice', e.target.value)}
+                        className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        placeholder="9.038"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Strike Price
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={inputs.strikePrice}
+                        onChange={(e) => handleInputChange('strikePrice', e.target.value)}
+                        className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        placeholder="2.51"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Target Future Valuation
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
+                      <input
+                        type="number"
+                        step="1000"
+                        value={inputs.futureValuation}
+                        onChange={(e) => handleInputChange('futureValuation', e.target.value)}
+                        className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                        placeholder="1000000000"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Advanced dilution inputs */}
+                  <div className="border-t pt-4">
+                    <h3 className="text-lg font-medium text-gray-700 mb-3">Dilution Assumptions</h3>
+                    
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Expected Future Funding Rounds
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="10"
+                          value={inputs.expectedRounds}
+                          onChange={(e) => handleInputChange('expectedRounds', e.target.value)}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                          placeholder="2"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Number of additional funding rounds before exit (0-10)</p>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Average Dilution Per Round
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min="0"
+                            max="50"
+                            value={inputs.dilutionPerRound}
+                            onChange={(e) => handleInputChange('dilutionPerRound', e.target.value)}
+                            className="w-full pr-8 pl-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                            placeholder="20"
+                          />
+                          <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500">%</span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">Typical dilution: 15-25% per round</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Advanced Results Section */}
+              <div className="space-y-6">
+                <h2 className="text-xl font-semibold text-gray-800 flex items-center">
+                  <TrendingUp className="w-5 h-5 mr-2" />
+                  Advanced Results (With Dilution)
+                </h2>
+
+                <div className="space-y-4">
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <div className="text-sm text-gray-600 mb-1">Number of Shares</div>
+                    <div className="text-2xl font-bold text-gray-900">
+                      {formatNumber(results.numberOfShares)}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">Your shares remain constant</div>
+                  </div>
+
+                  <div className="bg-indigo-50 rounded-lg p-4">
+                    <div className="text-sm text-indigo-600 mb-1">Exercise Cost</div>
+                    <div className="text-2xl font-bold text-indigo-900">
+                      {formatCurrency(results.exerciseCost)}
+                    </div>
+                    <div className="text-sm text-indigo-600 mt-1">
+                      {results.exercisePercentage.toFixed(1)}% of grant value
+                    </div>
+                  </div>
+
+                  <div className="bg-orange-50 rounded-lg p-4">
+                    <div className="text-sm text-orange-600 mb-1">Current Ownership</div>
+                    <div className="text-2xl font-bold text-orange-900">
+                      {results.ownershipPercentage.toFixed(4)}%
+                    </div>
+                  </div>
+
+                  {results.totalDilution > 0 && (
+                    <div className="bg-red-50 rounded-lg p-4 border-2 border-red-200">
+                      <div className="text-sm text-red-600 mb-1">Expected Dilution Impact</div>
+                      <div className="text-lg font-bold text-red-900">
+                        -{results.totalDilution.toFixed(1)}% ownership reduction
+                      </div>
+                      <div className="text-sm text-red-600 mt-1">
+                        Final ownership: {results.dilutedOwnership.toFixed(4)}%
+                      </div>
+                    </div>
+                  )}
+
+                  {(inputs.futureValuation && parseFloat(inputs.futureValuation) > parseFloat(inputs.valuation || 0)) && (
+                    <>
+                      <div className="bg-green-50 rounded-lg p-4">
+                        <div className="text-sm text-green-600 mb-1">Simple Future Value (No Dilution)</div>
+                        <div className="text-2xl font-bold text-green-900">
+                          {formatCurrency(results.futureGain)}
+                        </div>
+                        <div className="text-sm text-green-600 mt-1">
+                          {results.futureRoi.toFixed(0)}% ROI
+                        </div>
+                      </div>
+
+                      {results.dilutedGain > 0 && (
+                        <div className="bg-purple-50 rounded-lg p-4 border-2 border-purple-200">
+                          <div className="text-sm text-purple-600 mb-1">Realistic Future Value (With Dilution)</div>
+                          <div className="text-2xl font-bold text-purple-900">
+                            {formatCurrency(results.dilutedGain)}
+                          </div>
+                          <div className="text-sm text-purple-600 mt-1">
+                            {((results.dilutedGain / results.exerciseCost) * 100).toFixed(0)}% ROI
+                          </div>
+                          <div className="text-xs text-purple-500 mt-2">
+                            After {inputs.expectedRounds} rounds @ {inputs.dilutionPerRound}% dilution each
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+
           return (
             <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-              <div className="max-w-4xl mx-auto">
+              <div className="max-w-6xl mx-auto">
                 <div className="bg-white rounded-xl shadow-xl p-8">
                   {/* Header */}
                   <div className="text-center mb-8">
@@ -188,198 +658,32 @@
                     <p className="text-gray-600">Calculate exercise costs and potential returns for your stock options</p>
                   </div>
 
-                  <div className="grid md:grid-cols-2 gap-8">
-                    {/* Input Section */}
-                    <div className="space-y-6">
-                      <h2 className="text-xl font-semibold text-gray-800 flex items-center">
-                        <DollarSign className="w-5 h-5 mr-2" />
-                        Option Details
-                      </h2>
-
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Option Grant Value
-                          </label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
-                            <input
-                              type="number"
-                              step="1000"
-                              value={inputs.optionValue}
-                              onChange={(e) => handleInputChange('optionValue', e.target.value)}
-                              className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                              placeholder="75000"
-                            />
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Company Valuation
-                          </label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
-                            <input
-                              type="number"
-                              step="1000"
-                              value={inputs.valuation}
-                              onChange={(e) => handleInputChange('valuation', e.target.value)}
-                              className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                              placeholder="250000000"
-                            />
-                          </div>
-                          <p className="text-xs text-gray-500 mt-1">Current company valuation (e.g., Series B)</p>
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Preferred Share Price
-                          </label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
-                            <input
-                              type="number"
-                              step="0.001"
-                              value={inputs.sharePrice}
-                              onChange={(e) => handleInputChange('sharePrice', e.target.value)}
-                              className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                              placeholder="9.038"
-                            />
-                          </div>
-                          <p className="text-xs text-gray-500 mt-1">Current fair market value per share</p>
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Strike Price (Exercise Price)
-                          </label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={inputs.strikePrice}
-                              onChange={(e) => handleInputChange('strikePrice', e.target.value)}
-                              className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                              placeholder="2.51"
-                            />
-                          </div>
-                          <p className="text-xs text-gray-500 mt-1">Price you pay to exercise options (after discounts)</p>
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Future Company Valuation (Optional)
-                          </label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
-                            <input
-                              type="number"
-                              step="1000"
-                              value={inputs.futureValuation}
-                              onChange={(e) => handleInputChange('futureValuation', e.target.value)}
-                              className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                              placeholder="500000000"
-                            />
-                          </div>
-                          <p className="text-xs text-gray-500 mt-1">Projected future valuation for scenario analysis</p>
-                          
-                          {/* Preset buttons */}
-                          <div className="mt-4 space-y-3">
-                            <div className="grid grid-cols-2 gap-2">
-                              <button
-                                onClick={() => setPresetFutureValuation(1000000000)}
-                                className="px-3 py-2 text-sm bg-purple-100 text-purple-800 rounded-lg hover:bg-purple-200 transition-colors"
-                                type="button"
-                              >
-                                $1B
-                              </button>
-                              <button
-                                onClick={() => setPresetFutureValuation(2500000000)}
-                                className="px-3 py-2 text-sm bg-purple-100 text-purple-800 rounded-lg hover:bg-purple-200 transition-colors"
-                                type="button"
-                              >
-                                $2.5B
-                              </button>
-                              <button
-                                onClick={() => setPresetFutureValuation(10000000000)}
-                                className="px-3 py-2 text-sm bg-purple-100 text-purple-800 rounded-lg hover:bg-purple-200 transition-colors"
-                                type="button"
-                              >
-                                $10B
-                              </button>
-                              <button
-                                onClick={() => setPresetFutureValuation(100000000000)}
-                                className="px-3 py-2 text-sm bg-purple-100 text-purple-800 rounded-lg hover:bg-purple-200 transition-colors"
-                                type="button"
-                              >
-                                $100B
-                              </button>
-                            </div>
-                            <button
-                              onClick={() => setPresetFutureValuation(1000000000000)}
-                              className="w-full px-4 py-3 text-lg font-bold bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 text-yellow-900 rounded-lg hover:from-yellow-500 hover:via-yellow-600 hover:to-yellow-700 transform hover:scale-105 transition-all duration-200 shadow-lg"
-                              type="button"
-                            >
-                              💰 ONE TRILLION DOLLARS 💰
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Results Section */}
-                    <div className="space-y-6">
-                      <h2 className="text-xl font-semibold text-gray-800 flex items-center">
-                        <TrendingUp className="w-5 h-5 mr-2" />
-                        Calculation Results
-                      </h2>
-
-                      <div className="space-y-4">
-                        <div className="bg-gray-50 rounded-lg p-4">
-                          <div className="text-sm text-gray-600 mb-1">Number of Shares</div>
-                          <div className="text-2xl font-bold text-gray-900">
-                            {formatNumber(results.numberOfShares)}
-                          </div>
-                        </div>
-
-                        <div className="bg-indigo-50 rounded-lg p-4">
-                          <div className="text-sm text-indigo-600 mb-1">Exercise Cost</div>
-                          <div className="text-2xl font-bold text-indigo-900">
-                            {formatCurrency(results.exerciseCost)}
-                          </div>
-                          <div className="text-sm text-indigo-600 mt-1">
-                            {results.exercisePercentage.toFixed(1)}% of grant value
-                          </div>
-                        </div>
-
-                        <div className="bg-green-50 rounded-lg p-4">
-                          <div className="text-sm text-green-600 mb-1">Potential Gain (Current Value)</div>
-                          <div className="text-2xl font-bold text-green-900">
-                            {formatCurrency(results.potentialGain)}
-                          </div>
-                          <div className="text-sm text-green-600 mt-1">
-                            {results.roi.toFixed(0)}% ROI if exercised today
-                          </div>
-                        </div>
-
-                        <div className="bg-orange-50 rounded-lg p-4">
-                            <div className="text-sm text-purple-600 mb-1">Potential Gain - Possible Future Value</div>
-                            <div className="text-2xl font-bold text-purple-900">
-                              {formatCurrency(results.futureGain)}
-                            </div>
-                            <div className="text-sm text-purple-600 mt-1">
-                              {results.futureRoi.toFixed(0)}% ROI • {formatCurrency(results.futureSharePrice)}/share
-                            </div>
-                            <div className="text-xs text-purple-500 mt-2">
-                              Total value: {formatCurrency(results.futureValue)} at {formatValuation(parseFloat(inputs.futureValuation) || 0)} valuation
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                  {/* Tabs */}
+                  <div className="flex mb-6 bg-gray-100 rounded-lg p-1">
+                    <button
+                      onClick={() => setActiveTab('simple')}
+                      className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
+                        activeTab === 'simple'
+                          ? 'bg-white text-indigo-600 shadow-sm'
+                          : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      Simple Calculator
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('advanced')}
+                      className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
+                        activeTab === 'advanced'
+                          ? 'bg-white text-indigo-600 shadow-sm'
+                          : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      Advanced (With Dilution)
+                    </button>
                   </div>
+
+                  {/* Tab Content */}
+                  {activeTab === 'simple' ? renderSimpleCalculator() : renderAdvancedCalculator()}
 
                   {/* Summary Section */}
                   <div className="mt-8 bg-blue-50 rounded-lg p-6">
@@ -387,19 +691,44 @@
                       <Info className="w-5 h-5 text-blue-600 mr-3 mt-0.5" />
                       <div>
                         <h3 className="font-semibold text-blue-900 mb-2">Summary</h3>
-                        <p className="text-blue-800 text-sm leading-relaxed mb-3">
-                          To exercise your full option grant of <strong>{formatCurrency(inputs.optionValue || 0)}</strong>, 
-                          you would need to pay <strong>{formatCurrency(results.exerciseCost)}</strong> for <strong>{formatNumber(results.numberOfShares)} shares</strong>. 
-                          This represents <strong>{results.exercisePercentage.toFixed(1)}%</strong> of your grant's current value. 
-                          At today's valuation, your options would be worth <strong>{formatCurrency(results.potentialGain)}</strong> more than the exercise cost.
-                        </p>
-                        {(inputs.futureValuation && parseFloat(inputs.futureValuation) > parseFloat(inputs.valuation || 0) && results.futureGain > 0) && (
-                          <p className="text-purple-800 text-sm leading-relaxed">
-                            <strong>Future Scenario:</strong> If the company reaches a <strong>{formatValuation(parseFloat(inputs.futureValuation) || 0)} valuation</strong>, 
-                            your {formatNumber(results.numberOfShares)} shares would be worth <strong>{formatCurrency(results.futureValue)}</strong>, 
-                            giving you a potential gain of <strong>{formatCurrency(results.futureGain)}</strong> 
-                            (a <strong>{results.futureRoi.toFixed(0)}% return</strong> on your {formatCurrency(results.exerciseCost)} exercise cost).
-                          </p>
+                        {activeTab === 'simple' ? (
+                          <div>
+                            <p className="text-blue-800 text-sm leading-relaxed mb-3">
+                              To exercise your full option grant of <strong>{formatCurrency(inputs.optionValue || 0)}</strong>, 
+                              you would need to pay <strong>{formatCurrency(results.exerciseCost)}</strong> for <strong>{formatNumber(results.numberOfShares)} shares</strong>. 
+                              This represents <strong>{results.exercisePercentage.toFixed(1)}%</strong> of your grant's current value. 
+                              At today's valuation, your options would be worth <strong>{formatCurrency(results.potentialGain)}</strong> more than the exercise cost.
+                            </p>
+                            {(inputs.futureValuation && parseFloat(inputs.futureValuation) > parseFloat(inputs.valuation || 0) && results.futureGain > 0) && (
+                              <p className="text-purple-800 text-sm leading-relaxed mb-3">
+                                <strong>Future Scenario:</strong> If the company reaches a <strong>{formatValuation(parseFloat(inputs.futureValuation) || 0)} valuation</strong>, 
+                                your {formatNumber(results.numberOfShares)} shares would be worth <strong>{formatCurrency(results.futureValue)}</strong>, 
+                                giving you a potential gain of <strong>{formatCurrency(results.futureGain)}</strong> 
+                                (a <strong>{results.futureRoi.toFixed(0)}% return</strong> on your {formatCurrency(results.exerciseCost)} exercise cost).
+                              </p>
+                            )}
+                            <div className="bg-yellow-100 border-l-4 border-yellow-500 p-3 mt-4">
+                              <p className="text-yellow-800 text-xs">
+                                <strong>Important:</strong> This simple calculation assumes the future valuation is achieved with <strong>no additional funding rounds or dilution</strong>. 
+                                For a more realistic estimate that accounts for dilution from future investors, use the "Advanced" tab.
+                              </p>
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <p className="text-blue-800 text-sm leading-relaxed mb-3">
+                              <strong>Advanced Analysis:</strong> This calculation accounts for dilution from future funding rounds. 
+                              With <strong>{inputs.expectedRounds} expected funding rounds</strong> at <strong>{inputs.dilutionPerRound}% dilution each</strong>, 
+                              your ownership would be reduced by approximately <strong>{results.totalDilution.toFixed(1)}%</strong>.
+                            </p>
+                            {results.dilutedGain > 0 && (
+                              <p className="text-purple-800 text-sm leading-relaxed">
+                                <strong>Realistic Outcome:</strong> At a <strong>{formatValuation(parseFloat(inputs.futureValuation) || 0)} valuation</strong>, 
+                                after accounting for dilution, your potential gain would be <strong>{formatCurrency(results.dilutedGain)}</strong> 
+                                (versus <strong>{formatCurrency(results.futureGain)}</strong> without dilution).
+                              </p>
+                            )}
+                          </div>
                         )}
                       </div>
                     </div>
