@@ -558,7 +558,7 @@
                         <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
                           <h3 className="heading-font mb-4" style={{ fontSize: '32px' }}>Current Equity Value*</h3>
                           <div className="heading-font mb-6">
-                            {formatCurrency(results.currentPostExerciseValue)}
+                            {formatCurrency(results.currentEquityValue)}
                           </div>
                           
                           <div className="space-y-3">
@@ -619,7 +619,7 @@
                       <h3 className="font-semibold text-gray-900 mb-3">Summary</h3>
                       <p className="text-gray-900 leading-relaxed mb-4">
                         You have <strong>{formatNumber(results.vestedShares)} vested shares</strong> out of {formatNumber(inputs.totalStockOptions)} total options 
-                        ({inputs.percentageVested}% vested). Current post-exercise value: <strong>{formatCurrency(results.currentPostExerciseValue)}</strong>.
+                        ({inputs.percentageVested}% vested). Current equity value: <strong>{formatCurrency(results.currentEquityValue)}</strong> (post-exercise: <strong>{formatCurrency(results.currentPostExerciseValue)}</strong>).
                       </p>
                       {results.dilutedPostExerciseValue > 0 && (
                         <p className="text-gray-900 leading-relaxed">
