@@ -61,15 +61,29 @@
           { value: 'series-f-plus', label: 'Series F+', order: 7 }
         ];
 
+        // Equity ranges by role at SEED stage (baseline) - based on market data
         const ROLE_LEVELS = [
-          { value: 'entry', label: 'Entry Level / Junior', equityRange: [0.01, 0.05] },
-          { value: 'mid', label: 'Mid-Level / Senior IC', equityRange: [0.05, 0.15] },
-          { value: 'lead', label: 'Lead / Staff', equityRange: [0.1, 0.3] },
-          { value: 'manager', label: 'Manager', equityRange: [0.1, 0.3] },
-          { value: 'senior-manager', label: 'Senior Manager / Director', equityRange: [0.2, 0.5] },
-          { value: 'vp', label: 'VP', equityRange: [0.5, 1.5] },
-          { value: 'c-level', label: 'C-Level', equityRange: [1.0, 5.0] }
+          { value: 'entry', label: 'Entry Level / Junior', seedEquityRange: [0.01, 0.05] },
+          { value: 'mid', label: 'Mid-Level / Senior IC', seedEquityRange: [0.05, 0.15] },
+          { value: 'lead', label: 'Lead / Staff', seedEquityRange: [0.1, 0.3] },
+          { value: 'manager', label: 'Manager', seedEquityRange: [0.1, 0.3] },
+          { value: 'senior-manager', label: 'Senior Manager / Director', seedEquityRange: [0.2, 0.5] },
+          { value: 'vp', label: 'VP', seedEquityRange: [0.5, 1.5] },
+          { value: 'c-level', label: 'C-Level', seedEquityRange: [1.0, 5.0] }
         ];
+
+        // Stage multipliers (relative to Seed) - based on Carta, Ravio, and Index Ventures data
+        // Earlier stage = more equity (higher risk), Later stage = less equity (lower risk, higher cash)
+        const STAGE_MULTIPLIERS = {
+          'pre-seed': 2.0,    // Highest risk, highest equity
+          'seed': 1.0,        // Baseline
+          'series-a': 0.5,    // ~50% of seed equity
+          'series-b': 0.3,    // ~30% of seed equity  
+          'series-c': 0.2,    // ~20% of seed equity
+          'series-d': 0.15,   // ~15% of seed equity
+          'series-e': 0.1,    // ~10% of seed equity
+          'series-f-plus': 0.08  // ~8% of seed equity
+        };
 
         const MARKETS = [
           { value: 'sf-bay', label: 'San Francisco Bay Area', multiplier: 1.0 },
@@ -296,23 +310,26 @@
             };
 
             if (roleData && marketData) {
-              // Adjust range for market
-              const adjustedMin = roleData.equityRange[0] * marketData.multiplier;
-              const adjustedMax = roleData.equityRange[1] * marketData.multiplier;
+              // Adjust range for stage and market
+              const stageMultiplier = STAGE_MULTIPLIERS[inputs.currentFundingStage] || 1.0;
+              const adjustedMin = roleData.seedEquityRange[0] * stageMultiplier * marketData.multiplier;
+              const adjustedMax = roleData.seedEquityRange[1] * stageMultiplier * marketData.multiplier;
+              
+              const stageName = FUNDING_STAGES.find(s => s.value === inputs.currentFundingStage)?.label || 'Seed';
               
               // Ownership comparison
               if (ownershipPercentage >= adjustedMax) {
                 marketComparison.ownershipScore = 'excellent';
-                marketComparison.ownershipInsight = `Your equity grant is above market rate for ${roleData.label} in ${marketData.label}.`;
+                marketComparison.ownershipInsight = `Your equity grant is above the typical range for ${roleData.label} at a ${stageName} company in ${marketData.label}.`;
               } else if (ownershipPercentage >= adjustedMin) {
                 marketComparison.ownershipScore = 'good';
-                marketComparison.ownershipInsight = `Your equity grant is within the typical range (${adjustedMin.toFixed(2)}%-${adjustedMax.toFixed(2)}%) for ${roleData.label} in ${marketData.label}.`;
+                marketComparison.ownershipInsight = `Your equity grant (${ownershipPercentage.toFixed(3)}%) is within the typical range (${adjustedMin.toFixed(2)}%-${adjustedMax.toFixed(2)}%) for ${roleData.label} at a ${stageName} company in ${marketData.label}.`;
               } else if (ownershipPercentage >= adjustedMin * 0.5) {
                 marketComparison.ownershipScore = 'below';
-                marketComparison.ownershipInsight = `Your equity grant is below the typical range (${adjustedMin.toFixed(2)}%-${adjustedMax.toFixed(2)}%) for ${roleData.label} in ${marketData.label}.`;
+                marketComparison.ownershipInsight = `Your equity grant is below the typical range (${adjustedMin.toFixed(2)}%-${adjustedMax.toFixed(2)}%) for ${roleData.label} at a ${stageName} company in ${marketData.label}.`;
               } else {
                 marketComparison.ownershipScore = 'low';
-                marketComparison.ownershipInsight = `Your equity grant is significantly below market rate for ${roleData.label} in ${marketData.label}.`;
+                marketComparison.ownershipInsight = `Your equity grant is significantly below market rate for ${roleData.label} at a ${stageName} company in ${marketData.label}.`;
               }
 
               // Strike price comparison
@@ -883,6 +900,10 @@
 
                           {/* Comparison Results */}
                           <div className="space-y-4 border-t border-gray-300 pt-4">
+                            <p className="text-xs text-gray-500 italic mb-4">
+                              Based on market data from Carta, Ravio, and Index Ventures (2024-2025). These ranges are for general guidance only and actual offers vary significantly by company, industry, and individual circumstances.
+                            </p>
+                            
                             {/* Ownership Assessment */}
                             <div>
                               <div className="flex items-center justify-between mb-2">
