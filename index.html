@@ -51,6 +51,8 @@
 
         // Funding stages and their typical dilution percentages
         const FUNDING_STAGES = [
+          { value: 'bootstrapped', label: 'Bootstrapped', order: -2 },
+          { value: 'angel', label: 'Angel', order: -1 },
           { value: 'pre-seed', label: 'Pre-Seed', order: 0 },
           { value: 'seed', label: 'Seed', order: 1 },
           { value: 'series-a', label: 'Series A', order: 2 },
@@ -72,19 +74,6 @@
           { value: 'c-level', label: 'C-Level', seedEquityRange: [1.0, 5.0] }
         ];
 
-        // Stage multipliers (relative to Seed) - based on Carta, Ravio, and Index Ventures data
-        // Earlier stage = more equity (higher risk), Later stage = less equity (lower risk, higher cash)
-        const STAGE_MULTIPLIERS = {
-          'pre-seed': 2.0,    // Highest risk, highest equity
-          'seed': 1.0,        // Baseline
-          'series-a': 0.5,    // ~50% of seed equity
-          'series-b': 0.3,    // ~30% of seed equity  
-          'series-c': 0.2,    // ~20% of seed equity
-          'series-d': 0.15,   // ~15% of seed equity
-          'series-e': 0.1,    // ~10% of seed equity
-          'series-f-plus': 0.08  // ~8% of seed equity
-        };
-
         const MARKETS = [
           { value: 'sf-bay', label: 'San Francisco Bay Area', multiplier: 1.0 },
           { value: 'nyc', label: 'New York City', multiplier: 0.9 },
@@ -94,7 +83,23 @@
           { value: 'remote', label: 'Remote', multiplier: 0.75 }
         ];
 
+        // Stage multipliers (relative to Seed) - based on Carta, Ravio, and Index Ventures data
+        const STAGE_MULTIPLIERS = {
+          'bootstrapped': 3.0,
+          'angel': 2.5,
+          'pre-seed': 2.0,
+          'seed': 1.0,
+          'series-a': 0.5,
+          'series-b': 0.3,
+          'series-c': 0.2,
+          'series-d': 0.15,
+          'series-e': 0.1,
+          'series-f-plus': 0.08
+        };
+
         const DEFAULT_DILUTION = {
+          'bootstrapped': 10,
+          'angel': 10,
           'pre-seed': 10,
           'seed': 15,
           'series-a': 20,
@@ -949,11 +954,20 @@
                         You have <strong>{formatNumber(results.vestedShares)} vested shares</strong> out of {formatNumber(inputs.totalStockOptions)} total options 
                         ({inputs.percentageVested}% vested). Current equity value: <strong>{formatCurrency(results.currentEquityValue)}</strong> (post-exercise: <strong>{formatCurrency(results.currentPostExerciseValue)}</strong>).
                       </p>
-                      {results.dilutedPostExerciseValue > 0 && selectedRoundsCount > 0 && (
+                      {results.dilutedPostExerciseValue > 0 && (
                         <p className="text-gray-900 leading-relaxed">
-                          <strong>Future Scenario:</strong> With {selectedRoundsCount} funding round{selectedRoundsCount > 1 ? 's' : ''} and {results.totalDilution.toFixed(1)}% total dilution, 
-                          at {inputs.futureValuation}{inputs.futureValuationUnit} valuation, after dilution and exercise costs, 
-                          your equity would be worth <strong>{formatCurrency(results.dilutedPostExerciseValue)}</strong> (ROI: {results.futureROI.toFixed(0)}%).
+                          <strong>Future Scenario:</strong> {selectedRoundsCount > 0 ? (
+                            <>
+                              With {selectedRoundsCount} funding round{selectedRoundsCount > 1 ? 's' : ''} and {results.totalDilution.toFixed(1)}% total dilution, 
+                              at {inputs.futureValuation}{inputs.futureValuationUnit} valuation, after dilution and exercise costs, 
+                              your equity would be worth <strong>{formatCurrency(results.dilutedPostExerciseValue)}</strong> (ROI: {results.futureROI.toFixed(0)}%).
+                            </>
+                          ) : (
+                            <>
+                              At {inputs.futureValuation}{inputs.futureValuationUnit} valuation with no additional dilution, after exercise costs, 
+                              your equity would be worth <strong>{formatCurrency(results.dilutedPostExerciseValue)}</strong> (ROI: {results.futureROI.toFixed(0)}%).
+                            </>
+                          )}
                         </p>
                       )}
                     </div>
