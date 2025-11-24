@@ -51,7 +51,6 @@
 
         // Funding stages and their typical dilution percentages
         const FUNDING_STAGES = [
-          { value: 'bootstrapped', label: 'Bootstrapped', order: -2 },
           { value: 'angel', label: 'Angel', order: -1 },
           { value: 'pre-seed', label: 'Pre-Seed', order: 0 },
           { value: 'seed', label: 'Seed', order: 1 },
@@ -85,7 +84,6 @@
 
         // Stage multipliers (relative to Seed) - based on Carta, Ravio, and Index Ventures data
         const STAGE_MULTIPLIERS = {
-          'bootstrapped': 3.0,
           'angel': 2.5,
           'pre-seed': 2.0,
           'seed': 1.0,
@@ -98,7 +96,6 @@
         };
 
         const DEFAULT_DILUTION = {
-          'bootstrapped': 10,
           'angel': 10,
           'pre-seed': 10,
           'seed': 15,
@@ -216,6 +213,15 @@
               }
             }
 
+            // Disable scroll on number inputs
+            const disableScroll = (e) => {
+              if (e.target.type === 'number') {
+                e.preventDefault();
+              }
+            };
+            
+            document.addEventListener('wheel', disableScroll, { passive: false });
+
             // Add keyboard shortcut for copy link (Cmd+L)
             const handleKeyPress = (e) => {
               if ((e.metaKey || e.ctrlKey) && e.key === 'l') {
@@ -225,7 +231,10 @@
             };
             
             window.addEventListener('keydown', handleKeyPress);
-            return () => window.removeEventListener('keydown', handleKeyPress);
+            return () => {
+              window.removeEventListener('keydown', handleKeyPress);
+              document.removeEventListener('wheel', disableScroll);
+            };
           }, []);
 
           useEffect(() => {
