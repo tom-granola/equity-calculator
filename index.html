@@ -40,6 +40,29 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
+        // Funding stages and their typical dilution percentages
+        const FUNDING_STAGES = [
+          { value: 'pre-seed', label: 'Pre-Seed', order: 0 },
+          { value: 'seed', label: 'Seed', order: 1 },
+          { value: 'series-a', label: 'Series A', order: 2 },
+          { value: 'series-b', label: 'Series B', order: 3 },
+          { value: 'series-c', label: 'Series C', order: 4 },
+          { value: 'series-d', label: 'Series D', order: 5 },
+          { value: 'series-e', label: 'Series E', order: 6 },
+          { value: 'series-f-plus', label: 'Series F+', order: 7 }
+        ];
+
+        const DEFAULT_DILUTION = {
+          'pre-seed': 10,
+          'seed': 15,
+          'series-a': 20,
+          'series-b': 20,
+          'series-c': 15,
+          'series-d': 15,
+          'series-e': 10,
+          'series-f-plus': 10
+        };
+
         // Tooltip icon component
         const InfoIcon = ({ className }) => (
           <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -75,38 +98,38 @@
           const [inputs, setInputs] = useState({
             totalStockOptions: 100000,
             percentageVested: 50,
+            currentFundingStage: 'seed',
             strikePrice: 0.6,
             strikeCurrency: '$',
             totalCompanyShares: 20000000,
             currentValuation: 100,
             currentValuationUnit: 'M',
             futureValuation: 5,
-            futureValuationUnit: 'B',
-            expectedRounds: 3,
-            dilutionPerRound: 20
+            futureValuationUnit: 'B'
           });
 
+          const [futureRounds, setFutureRounds] = useState({});
           const [showCopyTooltip, setShowCopyTooltip] = useState(false);
           const [linkCopied, setLinkCopied] = useState(false);
 
           const [results, setResults] = useState({
             vestedShares: 0,
             currentSharePrice: 0,
-            currentOwnership: 0,
             currentExerciseCost: 0,
             currentEquityValue: 0,
             currentPostExerciseValue: 0,
-            futureSharePrice: 0,
-            futureOwnership: 0,
-            futureExerciseCost: 0,
-            futureEquityValue: 0,
-            futurePostExerciseValue: 0,
-            dilutedFutureOwnership: 0,
             dilutedFutureValue: 0,
             dilutedPostExerciseValue: 0,
             totalDilution: 0,
             futureROI: 0
           });
+
+          // Get available future rounds based on current stage
+          const getAvailableFutureRounds = () => {
+            const currentStage = FUNDING_STAGES.find(s => s.value === inputs.currentFundingStage);
+            if (!currentStage) return [];
+            return FUNDING_STAGES.filter(s => s.order > currentStage.order);
+          };
 
           // Load URL parameters on mount
           useEffect(() => {
@@ -116,7 +139,7 @@
             Object.keys(inputs).forEach(key => {
               const value = urlParams.get(key);
               if (value !== null) {
-                if (key.includes('Unit') || key === 'strikeCurrency') {
+                if (key.includes('Unit') || key === 'strikeCurrency' || key === 'currentFundingStage') {
                   newInputs[key] = value;
                 } else {
                   newInputs[key] = parseFloat(value) || inputs[key];
@@ -125,6 +148,16 @@
             });
             
             setInputs(newInputs);
+
+            // Load future rounds from URL
+            const roundsData = urlParams.get('futureRounds');
+            if (roundsData) {
+              try {
+                setFutureRounds(JSON.parse(roundsData));
+              } catch (e) {
+                // Invalid JSON, ignore
+              }
+            }
 
             // Add keyboard shortcut for copy link (Cmd+L)
             const handleKeyPress = (e) => {
@@ -141,13 +174,16 @@
           useEffect(() => {
             calculateResults();
             updateURL();
-          }, [inputs]);
+          }, [inputs, futureRounds]);
 
           const updateURL = () => {
             const params = new URLSearchParams();
             Object.keys(inputs).forEach(key => {
               if (inputs[key]) params.set(key, inputs[key]);
             });
+            if (Object.keys(futureRounds).length > 0) {
+              params.set('futureRounds', JSON.stringify(futureRounds));
+            }
             
             const newURL = window.location.pathname + '?' + params.toString();
             window.history.replaceState({}, '', newURL);
@@ -162,9 +198,7 @@
               currentValuation,
               currentValuationUnit,
               futureValuation,
-              futureValuationUnit,
-              expectedRounds,
-              dilutionPerRound
+              futureValuationUnit
             } = inputs;
 
             // Convert valuations to actual numbers
@@ -180,16 +214,9 @@
               setResults({
                 vestedShares: 0,
                 currentSharePrice: 0,
-                currentOwnership: 0,
                 currentExerciseCost: 0,
                 currentEquityValue: 0,
                 currentPostExerciseValue: 0,
-                futureSharePrice: 0,
-                futureOwnership: 0,
-                futureExerciseCost: 0,
-                futureEquityValue: 0,
-                futurePostExerciseValue: 0,
-                dilutedFutureOwnership: 0,
                 dilutedFutureValue: 0,
                 dilutedPostExerciseValue: 0,
                 totalDilution: 0,
@@ -201,25 +228,25 @@
             // Basic calculations
             const vestedShares = Math.round(totalOptions * (vestedPercent / 100));
             const currentSharePrice = currentVal / totalShares;
-            const currentOwnership = (totalOptions / totalShares) * 100;
             const currentExerciseCost = vestedShares * strike;
             const currentEquityValue = vestedShares * currentSharePrice;
             const currentPostExerciseValue = currentEquityValue - currentExerciseCost;
 
             // Future calculations with dilution
-            let dilutedFutureOwnership = currentOwnership;
             let dilutedFutureValue = 0;
             let dilutedPostExerciseValue = 0;
             let totalDilution = 0;
             let futureROI = 0;
 
             if (futureVal > 0) {
-              const rounds = parseFloat(expectedRounds) || 0;
-              const dilutionRate = parseFloat(dilutionPerRound) || 0;
+              // Calculate compound dilution from selected future rounds
+              const selectedRounds = Object.entries(futureRounds).filter(([_, data]) => data.selected);
               
-              // Calculate compound dilution
-              const dilutionFactor = Math.pow(1 - (dilutionRate / 100), rounds);
-              dilutedFutureOwnership = currentOwnership * dilutionFactor;
+              let dilutionFactor = 1;
+              selectedRounds.forEach(([_, data]) => {
+                dilutionFactor *= (1 - (data.dilution / 100));
+              });
+              
               totalDilution = (1 - dilutionFactor) * 100;
               
               // Diluted share price calculation
@@ -234,16 +261,9 @@
             setResults({
               vestedShares,
               currentSharePrice,
-              currentOwnership,
               currentExerciseCost,
               currentEquityValue,
               currentPostExerciseValue,
-              futureSharePrice: 0,
-              futureOwnership: 0,
-              futureExerciseCost: currentExerciseCost,
-              futureEquityValue: 0,
-              futurePostExerciseValue: 0,
-              dilutedFutureOwnership,
               dilutedFutureValue,
               dilutedPostExerciseValue,
               totalDilution,
@@ -265,6 +285,43 @@
             }));
           };
 
+          const handleFundingStageChange = (stage) => {
+            setInputs(prev => ({
+              ...prev,
+              currentFundingStage: stage
+            }));
+            // Reset future rounds when stage changes
+            setFutureRounds({});
+          };
+
+          const toggleFutureRound = (roundValue) => {
+            setFutureRounds(prev => {
+              const newRounds = { ...prev };
+              if (newRounds[roundValue]) {
+                newRounds[roundValue] = {
+                  ...newRounds[roundValue],
+                  selected: !newRounds[roundValue].selected
+                };
+              } else {
+                newRounds[roundValue] = {
+                  selected: true,
+                  dilution: DEFAULT_DILUTION[roundValue]
+                };
+              }
+              return newRounds;
+            });
+          };
+
+          const updateRoundDilution = (roundValue, dilution) => {
+            setFutureRounds(prev => ({
+              ...prev,
+              [roundValue]: {
+                ...prev[roundValue],
+                dilution: parseInt(dilution)
+              }
+            }));
+          };
+
           const formatCurrency = (amount) => {
             const currencySymbol = inputs.strikeCurrency === '£' ? '£' : '$';
             const currencyCode = inputs.strikeCurrency === '£' ? 'GBP' : 'USD';
@@ -281,16 +338,15 @@
             return new Intl.NumberFormat('en-US').format(Math.round(num));
           };
 
-          const formatPercentage = (num) => {
-            return `${num.toFixed(3)}%`;
-          };
-
           const copyLinkToClipboard = () => {
             navigator.clipboard.writeText(window.location.href).then(() => {
               setLinkCopied(true);
               setTimeout(() => setLinkCopied(false), 2000);
             });
           };
+
+          const availableFutureRounds = getAvailableFutureRounds();
+          const selectedRoundsCount = Object.values(futureRounds).filter(r => r.selected).length;
 
           return (
             <div className="min-h-screen bg-white">
@@ -345,6 +401,23 @@
                               <span>0%</span>
                               <span>100%</span>
                             </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-2">
+                              Current Funding Stage
+                            </label>
+                            <select
+                              value={inputs.currentFundingStage}
+                              onChange={(e) => handleFundingStageChange(e.target.value)}
+                              className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-gray-900 focus:border-gray-900 text-base"
+                            >
+                              {FUNDING_STAGES.map(stage => (
+                                <option key={stage.value} value={stage.value}>
+                                  {stage.label}
+                                </option>
+                              ))}
+                            </select>
                           </div>
 
                           <div>
@@ -525,49 +598,61 @@
 
                           <div className="border-t pt-6 mt-2">
                             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                              Dilution Assumptions
-                              <Tooltip text="Future funding rounds will dilute your ownership as new investors buy shares. A typical assumption is 10-20% dilution per round. This calculator uses compound dilution - each round dilutes your remaining ownership, not your original ownership.">
+                              Future Funding Rounds
+                              <Tooltip text="Select which funding rounds you expect before exit. Each round typically dilutes your ownership as new investors buy shares. Adjust the dilution percentage for each round based on your expectations.">
                                 <InfoIcon className="w-5 h-5 text-gray-400 ml-2" />
                               </Tooltip>
                             </h3>
                             
-                            <div className="space-y-6">
-                              <div>
-                                <label className="block text-sm font-medium text-gray-900 mb-2">
-                                  Additional Rounds of Funding: {inputs.expectedRounds}
-                                </label>
-                                <input
-                                  type="range"
-                                  min="0"
-                                  max="10"
-                                  value={inputs.expectedRounds}
-                                  onChange={(e) => handleSliderChange('expectedRounds', e.target.value)}
-                                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                                />
-                                <div className="flex justify-between text-xs text-gray-500 mt-1">
-                                  <span>0</span>
-                                  <span>10</span>
-                                </div>
+                            {availableFutureRounds.length === 0 ? (
+                              <p className="text-gray-600 text-sm">No future rounds available after {FUNDING_STAGES.find(s => s.value === inputs.currentFundingStage)?.label}</p>
+                            ) : (
+                              <div className="space-y-4">
+                                {availableFutureRounds.map(round => {
+                                  const isSelected = futureRounds[round.value]?.selected || false;
+                                  const dilution = futureRounds[round.value]?.dilution || DEFAULT_DILUTION[round.value];
+                                  
+                                  return (
+                                    <div key={round.value} className="border border-gray-300 rounded-lg p-4">
+                                      <div className="flex items-center justify-between mb-3">
+                                        <label className="flex items-center cursor-pointer">
+                                          <input
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            onChange={() => toggleFutureRound(round.value)}
+                                            className="w-5 h-5 text-gray-900 border-gray-300 rounded focus:ring-gray-900 cursor-pointer"
+                                          />
+                                          <span className="ml-3 font-medium text-gray-900">{round.label}</span>
+                                        </label>
+                                        <Tooltip text={`Average dilution for ${round.label} is ${DEFAULT_DILUTION[round.value]}%`}>
+                                          <InfoIcon className="w-4 h-4 text-gray-400" />
+                                        </Tooltip>
+                                      </div>
+                                      
+                                      {isSelected && (
+                                        <div>
+                                          <label className="block text-sm text-gray-600 mb-2">
+                                            Dilution: {dilution}%
+                                          </label>
+                                          <input
+                                            type="range"
+                                            min="5"
+                                            max="50"
+                                            value={dilution}
+                                            onChange={(e) => updateRoundDilution(round.value, e.target.value)}
+                                            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                                          />
+                                          <div className="flex justify-between text-xs text-gray-500 mt-1">
+                                            <span>5%</span>
+                                            <span>50%</span>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
                               </div>
-
-                              <div>
-                                <label className="block text-sm font-medium text-gray-900 mb-2">
-                                  Dilution Per Round: {inputs.dilutionPerRound}%
-                                </label>
-                                <input
-                                  type="range"
-                                  min="0"
-                                  max="50"
-                                  value={inputs.dilutionPerRound}
-                                  onChange={(e) => handleSliderChange('dilutionPerRound', e.target.value)}
-                                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                                />
-                                <div className="flex justify-between text-xs text-gray-500 mt-1">
-                                  <span>0%</span>
-                                  <span>50%</span>
-                                </div>
-                              </div>
-                            </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -586,10 +671,6 @@
                             <div className="flex justify-between py-2">
                               <span className="text-gray-600">Vested shares:</span>
                               <span className="font-semibold text-gray-900">{formatNumber(results.vestedShares)}</span>
-                            </div>
-                            <div className="flex justify-between py-2">
-                              <span className="text-gray-600">Your initial percentage ownership:</span>
-                              <span className="font-semibold text-gray-900">{formatPercentage(results.currentOwnership)}</span>
                             </div>
                             <div className="flex justify-between py-2">
                               <span className="text-gray-600">Current cost to exercise:</span>
@@ -625,9 +706,11 @@
                               </div>
                             </div>
                             
-                            <div className="text-sm text-gray-600 mt-4 pt-4 border-t border-gray-300">
-                              After {inputs.expectedRounds} rounds @ {inputs.dilutionPerRound}% dilution each, total dilution is {results.totalDilution.toFixed(1)}% and final ownership is {formatPercentage(results.dilutedFutureOwnership)}.
-                            </div>
+                            {selectedRoundsCount > 0 && (
+                              <div className="text-sm text-gray-600 mt-4 pt-4 border-t border-gray-300">
+                                After {selectedRoundsCount} funding round{selectedRoundsCount > 1 ? 's' : ''}, total dilution is {results.totalDilution.toFixed(1)}%.
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -642,11 +725,10 @@
                         You have <strong>{formatNumber(results.vestedShares)} vested shares</strong> out of {formatNumber(inputs.totalStockOptions)} total options 
                         ({inputs.percentageVested}% vested). Current equity value: <strong>{formatCurrency(results.currentEquityValue)}</strong> (post-exercise: <strong>{formatCurrency(results.currentPostExerciseValue)}</strong>).
                       </p>
-                      {results.dilutedPostExerciseValue > 0 && (
+                      {results.dilutedPostExerciseValue > 0 && selectedRoundsCount > 0 && (
                         <p className="text-gray-900 leading-relaxed">
-                          <strong>Future Scenario:</strong> With {inputs.expectedRounds} funding rounds at {inputs.dilutionPerRound}% dilution each, 
-                          your ownership would be reduced by <strong>{results.totalDilution.toFixed(1)}%</strong>. 
-                          At {inputs.futureValuation}{inputs.futureValuationUnit} valuation, after dilution and exercise costs, 
+                          <strong>Future Scenario:</strong> With {selectedRoundsCount} funding round{selectedRoundsCount > 1 ? 's' : ''} and {results.totalDilution.toFixed(1)}% total dilution, 
+                          at {inputs.futureValuation}{inputs.futureValuationUnit} valuation, after dilution and exercise costs, 
                           your equity would be worth <strong>{formatCurrency(results.dilutedPostExerciseValue)}</strong> (ROI: {results.futureROI.toFixed(0)}%).
                         </p>
                       )}
