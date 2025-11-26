@@ -771,7 +771,7 @@
                                   
                                   return (
                                     <div key={round.value} className="border border-gray-300 rounded-lg p-4">
-                                      <div className="flex items-center justify-between mb-3">
+                                      <div className={`flex items-center justify-between ${isSelected ? 'mb-3' : ''}`}>
                                         <label className="flex items-center cursor-pointer">
                                           <input
                                             type="checkbox"
