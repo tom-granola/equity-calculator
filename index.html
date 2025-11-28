@@ -982,7 +982,7 @@
                     </div>
                   </div>
 
-                  {/* Share Link Section */}
+ {/* Share Link Section */}
                   <div className="mt-8 text-center relative">
                     <button
                       onClick={copyLinkToClipboard}
@@ -1004,9 +1004,36 @@
                     )}
                   </div>
 
+                  {/* Reset Button */}
+                  <div className="mt-4 text-center">
+                    <button
+                      onClick={() => {
+                        setInputs({
+                          totalStockOptions: 0,
+                          percentageVested: 0,
+                          currentFundingStage: 'seed',
+                          strikePrice: 0,
+                          strikeCurrency: '$',
+                          totalCompanyShares: 0,
+                          currentValuation: 0,
+                          currentValuationUnit: 'M',
+                          futureValuation: 0,
+                          futureValuationUnit: 'B',
+                          roleLevel: 'mid',
+                          market: 'sf-bay'
+                        });
+                        setFutureRounds({});
+                      }}
+                      className="px-6 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+                    >
+                      Reset Calculator
+                    </button>
+                  </div>
+
                   {/* Footer */}
                   <div className="mt-8 text-center text-xs text-gray-500 space-y-2">
                     <p>*Content is meant for informational purposes only. This should not be construed as solicitation or recommendation of any investment or investment strategy.</p>
+                    <p>© 2025 Hired By Startups. Love this tool? You're welcome to use it and share the link. Please don't copy or rehost it without permission. Want to discuss? <a href="mailto:tom@hiredbystartups.com" className="underline hover:text-gray-700">tom@hiredbystartups.com</a></p>
                     <p>
                       Built by <a href="https://www.linkedin.com/in/tomladds/" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-700">Tom</a> at <a href="https://hiredbystartups.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-700">Hired By Startups</a>
                     </p>
